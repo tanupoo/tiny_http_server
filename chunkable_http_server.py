@@ -39,11 +39,29 @@ class ChunkableHTTPRequestHandler(BaseHTTPRequestHandler):
     server_version = 'ChunkableHTTP/' + __version__
 
     max_content_size = 512*1024  # 512KB
-    force_chunked = True
+    force_chunked = False
     chunk_max_size = 512
     chunk_header_length = 128    # chunk header length of inline or footer
     chunk_tail_buffer = 16
     chunk_read_timeout = 5
+
+    def __init__(self, request, client_address, server, **kwargs):
+        if kwargs.has_key('force_chunked'):
+            if kwargs['force_chunked'] in [ True, False ]:
+                self.force_chunked = kwargs['force_chunked']
+            else:
+                raise ValueError('invalid value of force_chunked')
+        if kwargs.has_key('chunk_max_size'):
+            if kwargs['chunk_max_size'] > 0:
+                self.chunk_max_size = kwargs['chunk_max_size']
+            else:
+                raise ValueError('invalid value of chunk_max_size')
+        if kwargs.has_key('chunk_read_timeout'):
+            if kwargs['chunk_read_timeout'] > 0:
+                self.chunk_read_timeout = kwargs['chunk_read_timeout']
+            else:
+                raise ValueError('invalid value of chunk_read_timeout')
+        BaseHTTPRequestHandler.__init__(self, request, client_address, server)
 
     def do_GET(self):
         '''
