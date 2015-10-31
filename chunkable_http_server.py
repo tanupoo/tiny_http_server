@@ -154,6 +154,9 @@ class ChunkableHTTPRequestHandler(BaseHTTPRequestHandler):
             if self.server.debug_level:
                 print('DEBUG: chunked size=', chunk_size)
                 print('DEBUG: chunk=', chunk)
+                if self.server.debug_level > 1:
+                    print('DEBUG: chunk(hex)=',
+                          [hex(x) for x in bytearray(chunk)])
             # remove the tail.
             nl = self.rfile.read(2)
             if self.server.debug_level:
