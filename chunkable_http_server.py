@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+#
+# Copyright (C) 2010 Shoichi Sakane <sakane@tanu.org>, All rights reserved.
+# See the file LICENSE in the top level directory for more details.
+#
 
 from __future__ import print_function
 
