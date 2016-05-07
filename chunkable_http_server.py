@@ -76,7 +76,6 @@ class ChunkableHTTPRequestHandler(BaseHTTPRequestHandler):
         may be overriddedn.
         '''
         self.pre_process()
-        self.read_content()
 
     def do_POST(self):
         '''
