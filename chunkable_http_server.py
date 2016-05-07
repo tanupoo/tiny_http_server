@@ -12,10 +12,6 @@ import argparse
 import traceback
 import json
 
-#from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
-#from SocketServer import ThreadingMixIn
-#import threading
-
 from tiny_http_server import ThreadedHTTPServer, TinyHTTPHandler, TinyHTTPServer
 
 '''
