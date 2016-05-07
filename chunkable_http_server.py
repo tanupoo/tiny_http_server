@@ -329,7 +329,6 @@ if __name__ == '__main__':
         config['debug_level'] = opt.debug_level
     elif not config.has_key('debug_level'):
         config['debug_level'] = 0
-    print(config['debug_level'])
     # start the server.
     try:
         httpd = ChunkableHTTPServer((opt.server_addr, port),
