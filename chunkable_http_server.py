@@ -12,9 +12,11 @@ import argparse
 import traceback
 import json
 
-from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
-from SocketServer import ThreadingMixIn
-import threading
+#from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+#from SocketServer import ThreadingMixIn
+#import threading
+
+from tiny_http_server import ThreadedHTTPServer, TinyHTTPHandler, TinyHTTPServer
 
 '''
 - Chunk handling referred to "4.1.  Chunked Transfer Coding in RFC 7230".
@@ -41,10 +43,7 @@ import threading
 
 __version__ = '0.1'
 
-class ChunkableHTTPRequestHandler(BaseHTTPRequestHandler):
-
-    protocol_version = 'HTTP/1.1'
-    server_version = 'ChunkableHTTP/' + __version__
+class ChunkableHTTPRequestHandler(TinyHTTPHandler):
 
     max_content_size = 512*1024  # 512KB
     force_chunked = False
@@ -69,35 +68,11 @@ class ChunkableHTTPRequestHandler(BaseHTTPRequestHandler):
                 self.chunk_read_timeout = kwargs['chunk_read_timeout']
             else:
                 raise ValueError('invalid value of chunk_read_timeout')
-        BaseHTTPRequestHandler.__init__(self, request, client_address, server)
+        TinyHTTPHandler.__init__(self, request, client_address, server)
+        self.set_server_version('ChunkableHTTPServer/' + __version__)
 
-    def do_GET(self):
-        '''
-        may be overriddedn.
-        '''
-        self.pre_process()
-
-    def do_POST(self):
-        '''
-        may be overriddedn.
-        '''
-        self.pre_process()
-        self.read_content()
-
-    def pre_process(self):
-        ''' pre-processing to read the content
-
-        may be overriddedn.
-        '''
-        if self.server.config['debug_level']:
-            print('DEBUG: thread#=', threading.currentThread().getName())
-            print('DEBUG: client =', self.client_address)
-            print('DEBUG: request=',
-                  self.command, self.path, self.request_version)
-            if self.server.config['debug_level'] > 1:
-                print('---BEGIN OF REQUESTED HEADER---')
-                print('\n'.join(['%s: %s' % (k,v) for k,v in self.headers.items()]))
-                print('---END OF REQUESTED HEADER---')
+    def do_PUT(self):
+        pass
 
     def read_content(self):
         transfer_encoding = self.headers.get('Transfer-Encoding')
@@ -108,11 +83,11 @@ class ChunkableHTTPRequestHandler(BaseHTTPRequestHandler):
                 print('ERROR: not supported such transfer_encoding',
                       transfer_encoding)
         elif self.headers.has_key('Content-Length'):
-            self.read_length()
+            self.post_read(self.read_length())
         else:
             if self.server.config['debug_level']:
                 print('DEBUG: Content-Length or Transfer-Encoding are not specified.')
-            self.read_somehow()
+            self.post_read(self.read_somehow())
 
     def read_chunked(self):
         transfer_encoding = self.headers.get('Transfer-Encoding')
@@ -191,53 +166,11 @@ class ChunkableHTTPRequestHandler(BaseHTTPRequestHandler):
                 raise
         self.post_read(contents)
 
-    def read_length(self):
-        if not self.headers.has_key('Content-Length'):
-            raise RuntimeError()
-        length = int(self.headers['Content-Length'])
-        if length > self.max_content_size:
-            raise ValueError('too large content > %d' %
-                                self.max_content_size)
-        self.read_once(length)
-
-    def read_once(self, length):
-        content = ''
-        if length:
-            content = self.rfile.read(length)
-        self.post_read([content])
-
     def read_somehow(self):
         '''
         may be overriddedn.
         '''
         self.post_read([])
-
-    def post_read(self, contents):
-        ''' post process after it read the whole content.
-
-        may be overriddedn.
-        '''
-        if self.server.config['debug_level'] > 1:
-            print('---BEGIN OF REQUESTED DATA---')
-            print(contents)
-            print('---END OF REQUESTED DATA---')
-        self.put_response(200, contents)
-
-    def put_response(self, code, contents, content_type='text/plain'):
-        #
-        # make the *body* of the response.
-        #
-        msg_list = []
-        msg_list.append(' '.join([self.command, self.path, self.request_version]))
-        msg_list.append('\n')
-        msg_list.extend(['%s: %s\n' % (k,v) for k,v in self.headers.items()])
-        msg_list.append('\n\n')
-        msg_list.extend(contents)
-        #
-        if self.force_chunked:
-            self.send_chunked(code, msg_list, content_type)
-        else:
-            self.send_once(code, msg_list, content_type)
 
     def send_chunked(self, code, msg_list, content_type):
         self.send_response(code)
@@ -268,78 +201,9 @@ class ChunkableHTTPRequestHandler(BaseHTTPRequestHandler):
         # 
         self.send_header('Connection', 'close')
 
-    def send_once(self, code, msg_list, content_type):
-        self.send_response(code)
-        content = ''.join(msg_list)
-        print([hex(ord(x)) for x in content[-4:]])
-        self.send_header('Content-Type', content_type)
-        self.send_header('Connection', 'close')
-        self.send_header('Content-Length', len(content))
-        self.end_headers()
-        self.wfile.write(content)
-        if self.server.config['debug_level'] > 1:
-            print('---BEGIN OF RESPONSE---')
-            print(content)
-            print('---END OF RESPONSE---')
-
-class ChunkableHTTPServer(ThreadingMixIn, HTTPServer):
-    '''Handle requests in a separate thread.'''
-
-    def __init__(self, server_address, RequestHandlerClass, config=None):
-        self.config = config
-        HTTPServer.__init__(self, server_address, RequestHandlerClass)
-
-def parse_args():
-    p = argparse.ArgumentParser()
-    p.add_argument('-s', action='store', dest='server_addr', default='',
-                   help='specifies the address of the server')
-    p.add_argument('-p', action='store', dest='server_port', default='8080',
-                   help='specifies the port number of the server')
-    p.add_argument('-c', action='store', dest='config_file', default=None,
-                   help='specifies the name of the configuration file')
-    p.add_argument('-d', action='append_const', dest='_f_debug',
-                   default=[], const=1, help="increase debug mode.")
-    p.add_argument('--debug', action='store', dest='_debug_level', default=0,
-        help="specify a debug level.")
-
-    args = p.parse_args()
-    args.debug_level = len(args._f_debug) + int(args._debug_level)
-
-    return args
-
 '''
 test
 '''
 if __name__ == '__main__':
-    ''' Test the Chunkable HTTP handler class.
-    '''
-    opt = parse_args()
-    port = int(opt.server_port)
-    if (opt.config_file):
-        try:
-            config = json.loads(open(opt.config_file).read())
-        except Exception as e:
-            print('ERROR: json.loads()', e)
-            exit(1)
-    else:
-        config = { 'debug_level': 0 }
-    # set proper debug_level.
-    if opt.debug_level:
-        config['debug_level'] = opt.debug_level
-    elif not config.has_key('debug_level'):
-        config['debug_level'] = 0
-    # start the server.
-    try:
-        httpd = ChunkableHTTPServer((opt.server_addr, port),
-                                    ChunkableHTTPRequestHandler, config=config)
-        # XXX make it a daemon
-        sa = httpd.socket.getsockname()
-        print('INFO: Starting HTTP server on', sa[0], 'port', sa[1])
-        httpd.serve_forever()
-    except KeyboardInterrupt as e:
-        print('\nterminated by keyboard interrupted.')
-    except Exception as e:
-        print('ERROR:', e)
-    finally:
-        httpd.socket.close()
-
+    httpd = TinyHTTPServer(ChunkableHTTPRequestHandler)
+    httpd.run()
