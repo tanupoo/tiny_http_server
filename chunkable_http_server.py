@@ -7,10 +7,7 @@
 
 from __future__ import print_function
 
-import sys
-import argparse
 import traceback
-import json
 
 from tiny_http_server import ThreadedHTTPServer, TinyHTTPHandler, TinyHTTPServer
 
