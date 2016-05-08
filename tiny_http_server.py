@@ -166,7 +166,6 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             self.send_error_msg(404, 'ERROR: no such file %s' % path)
             return
         self.send_response(code)
-        self.send_response(200)
         self.end_headers()
         length = 0
         for line in f.readlines():
