@@ -9,7 +9,7 @@ from __future__ import print_function
 
 import traceback
 
-from tiny_http_server import ThreadedHTTPServer, TinyHTTPHandler, TinyHTTPServer
+from tiny_http_server import *
 
 '''
 - Chunk handling referred to "4.1.  Chunked Transfer Coding in RFC 7230".
