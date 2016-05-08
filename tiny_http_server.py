@@ -8,6 +8,7 @@ import argparse
 import traceback
 import json
 import os
+import re
 from stat import S_ISREG
 
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
@@ -27,10 +28,18 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.pre_process()
+        # simply checking self.path.
+        # should check it more.
+        re_2dot = re.compile('\.\.')
+        if re_2dot.search(self.path):
+            self.send_error_msg(400, 'ERROR: ".." is not allowed.')
+            return
+        # file provider
+        path = self.server.config['doc_root'] + self.path
         try:
-            mode = os.stat(self.path[1:]).st_mode
+            mode = os.stat(path).st_mode
             if S_ISREG(mode):
-                self.send_doc(200, self.path[1:], 'text/plain')
+                self.send_doc(200, path, 'text/plain')
         except Exception:
             #contents = '\n'.join(
             #        ['%s: %s' % (k,v) for k,v in self.headers.items()])
@@ -199,6 +208,8 @@ class TinyHTTPServer():
                        help='specifies the port number of the server')
         p.add_argument('-c', action='store', dest='config_file', default=None,
                        help='specifies the name of the configuration file')
+        p.add_argument('-D', action='store', dest='doc_root', default=None,
+                    help='specifies the directory name of the document root.')
         p.add_argument('-C', action='store', dest='root_dir', default=None,
                        help='specifies the directory name for chroot().')
         p.add_argument('-d', action='append_const', dest='_f_debug',
@@ -230,7 +241,12 @@ class TinyHTTPServer():
             config['debug_level'] = opt.debug_level
         elif not config.has_key('debug_level'):
             config['debug_level'] = 0
-        # change directory.
+        # change directory into the document root..
+        if opt.doc_root:
+            config['doc_root'] = opt.doc_root
+        elif not config.has_key('doc_root'):
+            config['doc_root'] = '.'
+        # change root.
         try:
             if opt.root_dir:
                 os.chroot(opt.root_dir)
