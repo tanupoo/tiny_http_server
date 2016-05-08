@@ -6,6 +6,8 @@ from __future__ import print_function
 import sys
 import argparse
 import traceback
+import os
+from stat import S_ISREG
 
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 from SocketServer import ThreadingMixIn
@@ -17,15 +19,25 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
 
     protocol_version = 'HTTP/1.1'
     server_version = 'TinyHTTPServer/' + __version__
-    max_content_size = 16*1024  # 16KB
+    max_content_size = 256*1024  # 256KB
 
     def __init__(self, request, client_address, server, **kwargs):
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
 
     def do_GET(self):
         self.pre_process()
-        contents = '\n'.join(['%s: %s' % (k,v) for k,v in self.headers.items()])
-        self.put_response(200, contents)
+        try:
+            mode = os.stat(self.path[1:]).st_mode
+            if S_ISREG(mode):
+                self.send_doc(200, self.path[1:], 'text/plain')
+        except Exception:
+            #contents = '\n'.join(
+            #        ['%s: %s' % (k,v) for k,v in self.headers.items()])
+            if self.path == '/debug':
+                contents = ['%s: %s' % (k,v) for k,v in self.headers.items()]
+                self.put_response(200, contents)
+            else:
+                self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
 
     def do_POST(self):
         self.pre_process()
@@ -48,6 +60,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         ''' pre-processing to read the content
 
         it may be overridden.
+        access control should be here.
         '''
         if self._is_debug(2):
             print('DEBUG: thread#=', threading.currentThread().getName())
@@ -72,11 +85,13 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
     def read_length(self):
         ''' read message by the content-length. '''
         if not self.headers.has_key('Content-Length'):
-            raise RuntimeError('ERROR: Content-Length must be specified')
+            self.send_error_msg(400, 'ERROR: Content-Length must be specified')
+            return None
         length = int(self.headers['Content-Length'])
         if length > self.max_content_size:
-            raise ValueError('ERROR: too large content > %d' %
-                                self.max_content_size)
+            self.send_error_msg(400,
+                'ERROR: too large content > %d' % self.max_content_size)
+            return None
         return self.read_once(length)
 
     def read_once(self, length):
@@ -132,6 +147,41 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             print(content)
             print('---END OF RESPONSE---')
 
+    def send_error_msg(self, code, content):
+        self.log_error(content)
+        self.send_error(code, content)
+        self.send_header('Connection', 'close')
+        self.end_headers()
+        self.wfile.write(content)
+
+    def send_doc(self, code, path, content_type):
+        ''' send a file.
+
+        @param path path to the file name, which is supposed to be existed.
+        '''
+        try:
+            f = open(path)
+        except Exception as e:
+            self.send_error_msg(404, 'ERROR: no such file %s' % path)
+            return
+        self.send_response(code)
+        self.send_response(200)
+        self.end_headers()
+        length = 0
+        for line in f.readlines():
+            length += len(line)
+            self.wfile.write(line)
+        f.close()
+        self.send_header('Content-Type', content_type)
+        self.send_header('Connection', 'close')
+        self.send_header('Content-Length', length)
+        self.end_headers()
+        if self._is_debug(3):
+            print('---BEGIN OF RESPONSE---')
+            print('file length=', length, 'file=', path)
+            print('---END OF RESPONSE---')
+
+
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
     def __init__(self, server_address, RequestHandlerClass, config=None):
@@ -149,6 +199,8 @@ class TinyHTTPServer():
                        help='specifies the port number of the server')
         p.add_argument('-c', action='store', dest='config_file', default=None,
                        help='specifies the name of the configuration file')
+        p.add_argument('-C', action='store', dest='root_dir', default=None,
+                       help='specifies the directory name for chroot().')
         p.add_argument('-d', action='append_const', dest='_f_debug',
                        default=[], const=1, help="increase debug mode.")
         p.add_argument('--debug', action='store', dest='_debug_level',
@@ -178,6 +230,13 @@ class TinyHTTPServer():
             config['debug_level'] = opt.debug_level
         elif not config.has_key('debug_level'):
             config['debug_level'] = 0
+        # change directory.
+        try:
+            if opt.root_dir:
+                os.chroot(opt.root_dir)
+        except Exception as e:
+            print('ERROR:', e)
+            exit(1)
         # start the server.
         try:
             httpd = ThreadedHTTPServer((opt.server_addr, port), self.handler,
