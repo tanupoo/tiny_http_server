@@ -78,7 +78,7 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
         elif self.headers.has_key('Content-Length'):
             self.post_read(self.read_length())
         else:
-            if self.server.config['debug_level']:
+            if self._is_debug(1):
                 print('DEBUG: Content-Length or Transfer-Encoding are not specified.')
             self.post_read(self.read_somehow())
 
@@ -103,10 +103,10 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
                 # chunk_header_length bytes is enough to read the chunk header.
                 #
                 chunk_header = self.rfile.readline(self.chunk_header_length)
-                if self.server.config['debug_level']:
+                if self._is_debug(3):
                     print('DEBUG: chunk header=', chunk_header)
                 if chunk_header == '\r\n':
-                    if self.server.config['debug_level']:
+                    if self._is_debug(4):
                         print('DEBUG: last-chunk does not exist.')
                         print('DEBUG: stop reading chunks anyway.')
                     chunk_size = 0
@@ -118,7 +118,7 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
             except:
                 raise
             if chunk_size == 0:
-                if self.server.config['debug_level']:
+                if self._is_debug(3):
                     print('DEBUG: last-chunk has been found.')
                 break
             #
@@ -126,15 +126,15 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
             #   don't use readline() because CR or LF may be among the chunk.
             #
             chunk = self.rfile.read(chunk_size)
-            if self.server.config['debug_level']:
+            if self._is_debug(3):
                 print('DEBUG: chunked size=', chunk_size)
                 print('DEBUG: chunk=', chunk)
-                if self.server.config['debug_level'] > 1:
+                if self._is_debug(4):
                     print('DEBUG: chunk(hex)=',
                           [hex(x) for x in bytearray(chunk)])
             # remove the tail.
             nl = self.rfile.read(2)
-            if self.server.config['debug_level']:
+            if self._is_debug(4):
                 print('DEBUG: tail of chunk=', [hex(x) for x in bytearray(nl)])
             #
             contents.append(chunk)
@@ -147,10 +147,10 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
         while True:
             try:
                 footer = self.rfile.readline(self.chunk_header_length)
-                if self.server.config['debug_level']:
+                if self._is_debug(3):
                     print('DEBUG: footer=', footer)
                 if footer == '\r\n':
-                    if self.server.config['debug_level']:
+                    if self._is_debug(4):
                         print('DEBUG: end of chunk has been found.')
                     break
                 elif not footer:
@@ -172,7 +172,7 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
         self.send_header('Connection', 'close')
         self.send_header('Transfer-Encoding', 'chunked')
         self.end_headers()
-        if self.server.config['debug_level'] > 1:
+        if self._is_debug(3):
             print('---BEGIN OF RESPONSE---')
         for c in msg_list:
             s = self.chunk_max_size
@@ -181,13 +181,13 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
             for i in c_frag:
                 chunk_size = hex(len(i))[2:]
                 self.wfile.write(''.join([ chunk_size, '\r\n', i, '\r\n' ]))
-                if self.server.config['debug_level'] > 1:
+                if self._is_debug(3):
                     print(chunk_size)
                     print(i.strip(), '\n')
-                    if self.server.config['debug_level'] > 2:
+                    if self._is_debug(4):
                         print('hex=', [ hex(x)[2:] for x in bytearray(i) ],
                               '\n')
-        if self.server.config['debug_level'] > 1:
+        if self._is_debug(3):
             print('---END OF RESPONSE---')
         self.wfile.write('0\r\n')
         self.wfile.write('\r\n')
