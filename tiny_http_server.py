@@ -7,9 +7,10 @@ import sys
 import argparse
 import traceback
 import json
-import os
 import re
+import os
 from stat import S_ISREG
+import mimetypes
 
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 from SocketServer import ThreadingMixIn
@@ -26,20 +27,34 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
     def __init__(self, request, client_address, server, **kwargs):
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
 
-    def do_GET(self):
-        self.pre_process()
+    def file_provider(self):
+        ''' file provider.
+
+        @return False something error happened.
+        @return True a file was provided.
+        '''
         # simply checking self.path.
         # should check it more.
         re_2dot = re.compile('\.\.')
         if re_2dot.search(self.path):
             self.send_error_msg(400, 'ERROR: ".." is not allowed.')
-            return
-        # file provider
+            return False
+        # check whether the file exists.
         path = self.server.config['doc_root'] + self.path
         try:
             mode = os.stat(path).st_mode
-            if S_ISREG(mode):
-                self.send_doc(200, path, 'text/plain')
+            if not S_ISREG(mode):
+                return False
+        except Exception:
+            return False
+        self.send_doc(200, path)
+        return True
+
+    def do_GET(self):
+        self.pre_process()
+        try:
+            if self.file_provider():
+                return
         except Exception:
             #contents = '\n'.join(
             #        ['%s: %s' % (k,v) for k,v in self.headers.items()])
@@ -123,7 +138,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             print('---END OF REQUESTED DATA---')
         self.put_response(200, contents)
 
-    def put_response(self, code, contents, content_type='text/plain'):
+    def put_response(self, code, contents, ctype='text/html'):
         ''' make a list of messages.
 
         may be overriddedn.
@@ -141,20 +156,23 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         if contents:
             msg_list.extend(contents)
         #
-        self.send_once(code, msg_list, content_type)
+        self.send_once(code, ''.join(msg_list), ctype=ctype)
 
-    def send_once(self, code, msg_list, content_type):
+    def send_once(self, code, content, ctype=None):
         ''' send a list of messages. '''
         self.send_response(code)
-        content = ''.join(msg_list)
-        self.send_header('Content-Type', content_type)
+        if ctype:
+            self.send_header('Content-Type', ctype)
         self.send_header('Connection', 'close')
         self.send_header('Content-Length', len(content))
         self.end_headers()
         self.wfile.write(content)
         if self._is_debug(3):
             print('---BEGIN OF RESPONSE---')
-            print(content)
+            if ctype[:4] == 'text':
+                print(content)
+            else:
+                print('ctype=', ctype, 'length=', len(content))
             print('---END OF RESPONSE---')
 
     def send_error_msg(self, code, content):
@@ -164,32 +182,38 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
-    def send_doc(self, code, path, content_type):
+    def send_doc(self, code, path, ctype=None):
         ''' send a file.
 
         @param path path to the file name, which is supposed to be existed.
+        @param ctype content-type to be sent. if None, the decision is left
+               to the python stack.
         '''
+        # check the size
         try:
+            if os.stat(path).st_size > self.max_content_size:
+                self.send_error_msg(400,
+                                    'ERROR: too large file size to be sent %s'
+                                    % path)
+                return
             f = open(path)
         except Exception as e:
             self.send_error_msg(404, 'ERROR: no such file %s' % path)
             return
-        self.send_response(code)
-        self.end_headers()
-        length = 0
-        for line in f.readlines():
-            length += len(line)
-            self.wfile.write(line)
+        content = None
+        try:
+            content = f.read(self.max_content_size)
+        except Exception as e:
+            content = None
         f.close()
-        self.send_header('Content-Type', content_type)
-        self.send_header('Connection', 'close')
-        self.send_header('Content-Length', length)
-        self.end_headers()
-        if self._is_debug(3):
-            print('---BEGIN OF RESPONSE---')
-            print('file length=', length, 'file=', path)
-            print('---END OF RESPONSE---')
-
+        if not content:
+            self.send_error_msg(404, 'ERROR: read error %s' % path)
+            return
+        if not ctype:
+            ctype = mimetypes.guess_type(path)[0]
+            if not ctype:
+                ctype = 'text/plain'
+        self.send_once(code, content, ctype=ctype)
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
