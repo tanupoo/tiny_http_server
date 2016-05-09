@@ -50,28 +50,6 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         self.send_doc(200, path)
         return True
 
-    def do_GET(self):
-        self.pre_process()
-        try:
-            if self.file_provider():
-                return
-        except Exception:
-            #contents = '\n'.join(
-            #        ['%s: %s' % (k,v) for k,v in self.headers.items()])
-            if self.path == '/debug':
-                contents = ['%s: %s' % (k,v) for k,v in self.headers.items()]
-                self.put_response(200, contents)
-            else:
-                self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
-
-    def do_POST(self):
-        self.pre_process()
-        self.read_content()
-
-    def do_PUT(self):
-        self.pre_process()
-        self.read_content()
-
     def _is_debug(self, level):
         if self.server.config['debug_level'] >= level:
             return True
@@ -214,6 +192,28 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             if not ctype:
                 ctype = 'text/plain'
         self.send_once(code, content, ctype=ctype)
+
+    def do_GET(self):
+        self.pre_process()
+        try:
+            if self.file_provider():
+                return
+        except Exception:
+            #contents = '\n'.join(
+            #        ['%s: %s' % (k,v) for k,v in self.headers.items()])
+            if self.path == '/debug':
+                contents = ['%s: %s' % (k,v) for k,v in self.headers.items()]
+                self.put_response(200, contents)
+            else:
+                self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
+
+    def do_POST(self):
+        self.pre_process()
+        self.read_content()
+
+    def do_PUT(self):
+        self.pre_process()
+        self.read_content()
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
