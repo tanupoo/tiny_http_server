@@ -27,6 +27,18 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
     def __init__(self, request, client_address, server, **kwargs):
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
 
+    def _is_debug(self, level):
+        if self.server.config['debug_level'] >= level:
+            return True
+        else:
+            return False
+
+    def set_server_version(self, name):
+        server_version = name
+
+    def set_max_content_size(self, size):
+        max_content_size = size
+
     def file_provider(self):
         ''' file provider.
 
@@ -49,15 +61,6 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             return False
         self.send_doc(200, path)
         return True
-
-    def _is_debug(self, level):
-        if self.server.config['debug_level'] >= level:
-            return True
-        else:
-            return False
-
-    def set_server_version(self, name):
-        server_version = name
 
     def pre_process(self):
         ''' pre-processing to read the content
