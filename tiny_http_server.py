@@ -22,6 +22,15 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
 
     protocol_version = 'HTTP/1.1'
     server_version = 'TinyHTTPServer/' + __version__
+
+    #
+    # maximum content size to be handled.
+    # a negative value means infinity.
+    # it can be set by calling set_max_content_size().
+    #
+    # XXX it should be separated into
+    # max_read_content_size and max_write_content_size.
+    #
     max_content_size = 256*1024  # 256KB
 
     def __init__(self, request, client_address, server, **kwargs):
@@ -34,10 +43,10 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             return False
 
     def set_server_version(self, name):
-        server_version = name
+        self.server_version = name
 
     def set_max_content_size(self, size):
-        max_content_size = size
+        self.max_content_size = size
 
     def file_provider(self):
         ''' file provider.
@@ -94,9 +103,10 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             self.send_error_msg(400, 'ERROR: Content-Length must be specified')
             return None
         length = int(self.headers['Content-Length'])
-        if length > self.max_content_size:
+        if self.max_content_size >= 0 and length > self.max_content_size:
             self.send_error_msg(400,
-                'ERROR: too large content > %d' % self.max_content_size)
+                'ERROR: too large content to be received. > %d' %
+                                self.max_content_size)
             return None
         return self.read_once(length)
 
@@ -139,7 +149,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         #
         self.send_once(code, ''.join(msg_list), ctype=ctype)
 
-    def send_once(self, code, content, ctype=None):
+    def send_once(self, code, content, size=None, ctype=None):
         ''' send a list of messages. '''
         self.send_response(code)
         if ctype:
@@ -172,10 +182,10 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         '''
         # check the size
         try:
-            if os.stat(path).st_size > self.max_content_size:
+            size = os.stat(path).st_size
+            if (self.max_content_size >= 0 and size > self.max_content_size):
                 self.send_error_msg(400,
-                                    'ERROR: too large file size to be sent %s'
-                                    % path)
+                            'ERROR: too large file size to be sent. > %d', size)
                 return
             f = open(path)
         except Exception as e:
@@ -183,7 +193,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             return
         content = None
         try:
-            content = f.read(self.max_content_size)
+            content = f.read(size)
         except Exception as e:
             content = None
         f.close()
@@ -223,6 +233,8 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     def __init__(self, server_address, RequestHandlerClass, config=None):
         self.config = config
         HTTPServer.__init__(self, server_address, RequestHandlerClass)
+        if self.config.has_key('max_content_size'):
+            self.set_max_content_size(self.config['max_content_size'])
 
 class TinyHTTPServer():
 
