@@ -18,6 +18,10 @@ import threading
 
 __version__ = '0.1'
 
+#
+# XXX don't publish the path in this server, use self.path instead.
+#
+
 class TinyHTTPHandler(BaseHTTPRequestHandler):
 
     protocol_version = 'HTTP/1.1'
@@ -26,12 +30,15 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
     #
     # maximum content size to be handled.
     # a negative value means infinity.
-    # it can be set by calling set_max_content_size().
+    # it can be changed by defining max_content_size in the config.
     #
     # XXX it should be separated into
     # max_read_content_size and max_write_content_size.
     #
-    max_content_size = 256*1024  # 256KB
+    #max_content_size = 256*1024  # 256KB
+    #    if self.server.config.has_key('max_content_size'):
+    #        self.max_content_size = self.server.config['max_content_size']
+    max_content_size = -1
 
     def __init__(self, request, client_address, server, **kwargs):
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
@@ -45,9 +52,6 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
     def set_server_version(self, name):
         self.server_version = name
 
-    def set_max_content_size(self, size):
-        self.max_content_size = size
-
     def file_provider(self):
         ''' file provider.
 
@@ -58,17 +62,20 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         # should check it more.
         re_2dot = re.compile('\.\.')
         if re_2dot.search(self.path):
-            self.send_error_msg(400, 'ERROR: ".." is not allowed.')
+            self.send_error_msg(400, 'ERROR: ".." in the path is not allowed.')
             return False
         # check whether the file exists.
         path = self.server.config['doc_root'] + self.path
         try:
             mode = os.stat(path).st_mode
             if not S_ISREG(mode):
+                self.send_error_msg(400, 'ERROR: not a regular file, %s' %
+                                    self.path)
                 return False
-        except Exception:
+        except Exception as e:
+            self.send_error_msg(400, 'ERROR: internal error, %s' % e)
             return False
-        self.send_doc(200, path)
+        self.send_doc(path)
         return True
 
     def pre_process(self):
@@ -102,18 +109,18 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         if not self.headers.has_key('Content-Length'):
             self.send_error_msg(400, 'ERROR: Content-Length must be specified')
             return None
-        length = int(self.headers['Content-Length'])
-        if self.max_content_size >= 0 and length > self.max_content_size:
+        size = int(self.headers['Content-Length'])
+        if self.max_content_size >= 0 and size > self.max_content_size:
             self.send_error_msg(400,
                 'ERROR: too large content to be received. > %d' %
                                 self.max_content_size)
             return None
-        return self.read_once(length)
+        return self.read_once(size)
 
-    def read_once(self, length):
-        ''' read message with the specified length and return it. '''
-        if length:
-            return self.rfile.read(length)
+    def read_once(self, size):
+        ''' read message with the specified size and return it. '''
+        if size:
+            return self.rfile.read(size)
         else:
             return ''
 
@@ -127,16 +134,16 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             print('---BEGIN OF REQUESTED DATA---')
             print(contents)
             print('---END OF REQUESTED DATA---')
-        self.put_response(200, contents)
+        self.put_response(contents)
 
-    def put_response(self, code, contents, ctype='text/html'):
+    def put_response(self, contents, ctype='text/html'):
         ''' make a list of messages.
 
         may be overriddedn.
         it is allowed that contents is a list or a string.
         '''
         #
-        # make the *body* of the response.
+        # just echo the headers and body requested the peer.
         #
         msg_list = []
         msg_list.append(' '.join(
@@ -147,23 +154,32 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         if contents:
             msg_list.extend(contents)
         #
-        self.send_once(code, ''.join(msg_list), ctype=ctype)
+        #self.send_once(''.join(msg_list), ctype=ctype)
+        size = reduce(lambda a, b: a + len(b), msg_list, 0)
+        self.send_once(contents, size, ctype=ctype)
 
-    def send_once(self, code, content, size=None, ctype=None):
-        ''' send a list of messages. '''
-        self.send_response(code)
+    def send_once(self, contents, size, ctype=None):
+        ''' send a list of messages.
+        
+        @param contents a list or a stream of messages to be sent.
+        @param size the number of size of the messages.
+        @param ctype content-type. if None, send_once() tries to guess it.
+        '''
+        self.send_response(200)
         if ctype:
             self.send_header('Content-Type', ctype)
         self.send_header('Connection', 'close')
-        self.send_header('Content-Length', len(content))
+        self.send_header('Content-Length', size)
         self.end_headers()
-        self.wfile.write(content)
+        try:
+            for i in contents:
+                self.wfile.write(i)
+        except Exception as e:
+            self.send_error_msg(404, 'ERROR: internal error, %s' % e)
+            return
         if self._is_debug(3):
             print('---BEGIN OF RESPONSE---')
-            if ctype[:4] == 'text':
-                print(content)
-            else:
-                print('ctype=', ctype, 'length=', len(content))
+            print('ctype=', ctype, 'size=', size)
             print('---END OF RESPONSE---')
 
     def send_error_msg(self, code, content):
@@ -173,7 +189,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
-    def send_doc(self, code, path, ctype=None):
+    def send_doc(self, path, ctype=None):
         ''' send a file.
 
         @param path path to the file name, which is supposed to be existed.
@@ -185,26 +201,20 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             size = os.stat(path).st_size
             if (self.max_content_size >= 0 and size > self.max_content_size):
                 self.send_error_msg(400,
-                            'ERROR: too large file size to be sent. > %d', size)
+                        'ERROR: too large file size to be sent. > %d' %
+                        self.max_content_size)
                 return
             f = open(path)
         except Exception as e:
-            self.send_error_msg(404, 'ERROR: no such file %s' % path)
+            self.send_error_msg(404, 'ERROR: internal error, %s' % e)
             return
         content = None
-        try:
-            content = f.read(size)
-        except Exception as e:
-            content = None
-        f.close()
-        if not content:
-            self.send_error_msg(404, 'ERROR: read error %s' % path)
-            return
         if not ctype:
             ctype = mimetypes.guess_type(path)[0]
             if not ctype:
                 ctype = 'text/plain'
-        self.send_once(code, content, ctype=ctype)
+        self.send_once(f, size, ctype=ctype)
+        f.close()
 
     def do_GET(self):
         self.pre_process()
@@ -216,7 +226,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             #        ['%s: %s' % (k,v) for k,v in self.headers.items()])
             if self.path == '/debug':
                 contents = ['%s: %s' % (k,v) for k,v in self.headers.items()]
-                self.put_response(200, contents)
+                self.put_response(contents)
             else:
                 self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
 
@@ -233,10 +243,11 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     def __init__(self, server_address, RequestHandlerClass, config=None):
         self.config = config
         HTTPServer.__init__(self, server_address, RequestHandlerClass)
-        if self.config.has_key('max_content_size'):
-            self.set_max_content_size(self.config['max_content_size'])
 
 class TinyHTTPServer():
+
+    def __init__(self, handler):
+        self.handler = handler
 
     def __parse_args(self):
         p = argparse.ArgumentParser()
@@ -260,9 +271,6 @@ class TinyHTTPServer():
         args.debug_level = len(args._f_debug) + int(args._debug_level)
 
         return args
-
-    def __init__(self, handler):
-        self.handler = handler
 
     def run(self):
         opt = self.__parse_args()
