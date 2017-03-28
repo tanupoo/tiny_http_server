@@ -134,7 +134,16 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             print('---BEGIN OF REQUESTED DATA---')
             print(contents)
             print('---END OF REQUESTED DATA---')
-        self.put_response(contents)
+        #
+        # Here, you can change your own code according to the data posted.
+        #
+        if self.server.config.get('echo'):
+            #
+            # just echo the headers and body requested the peer.
+            #
+            self.put_response(contents)
+        else:
+            self.put_response('OK')
 
     def put_response(self, contents, ctype='text/html'):
         ''' make a list of messages.
@@ -142,9 +151,6 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         may be overriddedn.
         it is allowed that contents is a list or a string.
         '''
-        #
-        # just echo the headers and body requested the peer.
-        #
         msg_list = []
         msg_list.append(' '.join(
                 [self.command, self.path, self.request_version]))
