@@ -252,22 +252,32 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 class TinyHTTPServer():
 
+    config = {}
+
     def __init__(self, handler):
         self.handler = handler
 
-    def __parse_args(self):
+    def __set_opt(self, name, type, default, opt):
+        if opt:
+            self.config[name] = type(opt)
+        elif not self.config.has_key(name):
+            self.config[name] = default
+        # then, config[name] will be used as it is.
+        self.config[name] = type(self.config[name])
+
+    def __set_config(self):
         p = argparse.ArgumentParser()
-        p.add_argument('-s', action='store', dest='server_addr', default='',
+        p.add_argument('-s', action='store', dest='server_addr', default=None,
                        help='specifies the address of the server')
         p.add_argument('-p', action='store', dest='server_port',
-                       default='18886',
+                       default=None,
                        help='specifies the port number of the server')
         p.add_argument('-c', action='store', dest='config_file', default=None,
                        help='specifies the name of the configuration file')
         p.add_argument('-D', action='store', dest='doc_root', default=None,
                     help='specifies the directory name of the document root.')
-        p.add_argument('-C', action='store', dest='root_dir', default=None,
-                       help='specifies the directory name for chroot().')
+        p.add_argument('-C', action='store', dest='ch_root', default=0,
+                    help='changes the root directory into the document root.')
         p.add_argument('-d', action='append_const', dest='_f_debug',
                        default=[], const=1, help="increase debug mode.")
         p.add_argument('--debug', action='store', dest='_debug_level',
@@ -276,40 +286,39 @@ class TinyHTTPServer():
         args = p.parse_args()
         args.debug_level = len(args._f_debug) + int(args._debug_level)
 
-        return args
-
-    def run(self):
-        opt = self.__parse_args()
-        port = int(opt.server_port)
-        if (opt.config_file):
+        if (args.config_file):
             try:
-                config = json.loads(open(opt.config_file).read())
+                self.config = json.loads(open(args.config_file).read())
             except Exception as e:
                 print('ERROR: json.loads()', e)
                 exit(1)
-        else:
-            config = { 'debug_level': 0 }
-        # set proper debug_level.
-        if opt.debug_level:
-            config['debug_level'] = opt.debug_level
-        elif not config.has_key('debug_level'):
-            config['debug_level'] = 0
-        # change directory into the document root..
-        if opt.doc_root:
-            config['doc_root'] = opt.doc_root
-        elif not config.has_key('doc_root'):
-            config['doc_root'] = '.'
+        #
+        # overwrite config with the arguments.
+        #
+        self.__set_opt('debug_level', int, 0, args.debug_level)
+        self.__set_opt('server_port', str, '18886', args.server_port)
+        self.__set_opt('server_addr', str, '127.0.0.1', args.server_addr)
+        self.__set_opt('doc_root', str, '.', args.doc_root)
+        self.__set_opt('ch_root', int, 0, args.ch_root)
+
+    def run(self):
+        self.__set_config()
         # change root.
-        try:
-            if opt.root_dir:
-                os.chroot(opt.root_dir)
-        except Exception as e:
-            print('ERROR:', e)
-            exit(1)
+        # XXX needs to disable GET method.
+        if self.config['ch_root']:
+            try:
+                os.chroot(opt['root_dir'])
+            except Exception as e:
+                print('ERROR:', e)
+                exit(1)
         # start the server.
+        print(self.config['server_addr'])
+        print(self.config['server_port'])
         try:
-            httpd = ThreadedHTTPServer((opt.server_addr, port), self.handler,
-                                        config=config)
+            httpd = ThreadedHTTPServer((self.config['server_addr'],
+                                       int(self.config['server_port'])),
+                                       self.handler,
+                                       config=self.config)
             # XXX make it a daemon
             sa = httpd.socket.getsockname()
             print('INFO: Starting HTTP server on', sa[0], 'port', sa[1])
