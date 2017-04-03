@@ -1,7 +1,9 @@
 {
-	"debug_level" : 9,
-    "max_content_size" : -1,
+    "debug_level" : 9,
+    "server_addr" : "",
+    "server_port" : "9999",
+    "doc_root" : ".",
     "echo" : 1,
-	"key" : { "hoge" : [ "1", "2" ] }
+    "key" : { "hoge" : [ "1", "2" ] }
 }
 
