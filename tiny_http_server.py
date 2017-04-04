@@ -326,8 +326,6 @@ class TinyHTTPServer():
                 print('ERROR:', e)
                 exit(1)
         # start the server.
-        print(self.config['server_addr'])
-        print(self.config['server_port'])
         try:
             httpd = ThreadedHTTPServer((self.config['server_addr'],
                                        int(self.config['server_port'])),
