@@ -16,13 +16,13 @@ from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 from SocketServer import ThreadingMixIn
 import threading
 
-__version__ = '0.1'
-
 #
 # XXX don't publish the path in this server, use self.path instead.
 #
 
 class TinyHTTPHandler(BaseHTTPRequestHandler):
+
+    __version__ = '0.1'
 
     protocol_version = 'HTTP/1.1'
     server_version = 'TinyHTTPServer/' + __version__

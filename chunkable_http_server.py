@@ -7,8 +7,6 @@
 
 from __future__ import print_function
 
-import traceback
-
 from tiny_http_server import *
 
 '''
@@ -34,9 +32,9 @@ from tiny_http_server import *
  chunk-data     = 1*OCTET ; a sequence of chunk-size octets
 '''
 
-__version__ = '0.1'
-
 class ChunkableHTTPRequestHandler(TinyHTTPHandler):
+
+    __version__ = '0.1'
 
     max_content_size = 512*1024  # 512KB
     force_chunked = False
@@ -62,7 +60,7 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
             else:
                 raise ValueError('invalid value of chunk_read_timeout')
         TinyHTTPHandler.__init__(self, request, client_address, server)
-        self.set_server_version('ChunkableHTTPServer/' + __version__)
+        self.set_server_version('ChunkableHTTPServer/' + self.__version__)
 
     def do_PUT(self):
         pass
