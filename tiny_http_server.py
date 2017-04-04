@@ -259,11 +259,12 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 class TinyHTTPServer():
 
     config = {}
+    configured = False
 
     def __init__(self, handler):
         self.handler = handler
 
-    def __set_opt(self, name, type, default, opt):
+    def set_opt(self, name, type, default, opt):
         if opt:
             self.config[name] = type(opt)
         elif not self.config.has_key(name):
@@ -271,7 +272,11 @@ class TinyHTTPServer():
         # then, config[name] will be used as it is.
         self.config[name] = type(self.config[name])
 
-    def __set_config(self):
+    def set_config(self):
+        # do nothing if it is called before.
+        if self.configured:
+            return
+        #
         p = argparse.ArgumentParser()
         p.add_argument('-s', action='store', dest='server_addr', default=None,
                        help='specifies the address of the server')
@@ -288,10 +293,10 @@ class TinyHTTPServer():
                        default=[], const=1, help="increase debug mode.")
         p.add_argument('--debug', action='store', dest='_debug_level',
                        default=0, help="specify a debug level.")
-
+        #
         args = p.parse_args()
         args.debug_level = len(args._f_debug) + int(args._debug_level)
-
+        #
         if (args.config_file):
             try:
                 self.config = json.loads(open(args.config_file).read())
@@ -301,14 +306,17 @@ class TinyHTTPServer():
         #
         # overwrite config with the arguments.
         #
-        self.__set_opt('debug_level', int, 0, args.debug_level)
-        self.__set_opt('server_port', str, '18886', args.server_port)
-        self.__set_opt('server_addr', str, '127.0.0.1', args.server_addr)
-        self.__set_opt('doc_root', str, '.', args.doc_root)
-        self.__set_opt('ch_root', int, 0, args.ch_root)
+        self.set_opt('debug_level', int, 0, args.debug_level)
+        self.set_opt('server_port', str, '18886', args.server_port)
+        self.set_opt('server_addr', str, '127.0.0.1', args.server_addr)
+        self.set_opt('doc_root', str, '.', args.doc_root)
+        self.set_opt('ch_root', int, 0, args.ch_root)
+        #
+        #
+        self.configured = True
 
     def run(self):
-        self.__set_config()
+        self.set_config()
         # change root.
         # XXX needs to disable GET method.
         if self.config['ch_root']:
@@ -341,4 +349,5 @@ main
 '''
 if __name__ == '__main__' :
     httpd = TinyHTTPServer(TinyHTTPHandler)
+    httpd.set_config()
     httpd.run()
