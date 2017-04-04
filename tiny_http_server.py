@@ -242,6 +242,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             self.read_content()
         except Exception as e:
             print(e)
+            self.send_error_msg(404, 'ERROR: internal error, %s' % e)
 
     def do_PUT(self):
         self.pre_process()
@@ -249,6 +250,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             self.read_content()
         except Exception as e:
             print(e)
+            self.send_error_msg(404, 'ERROR: internal error, %s' % e)
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
