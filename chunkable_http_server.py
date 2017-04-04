@@ -83,7 +83,7 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
     def read_chunked(self):
         transfer_encoding = self.headers.get('Transfer-Encoding')
         if transfer_encoding != 'chunked':
-            raise RuntimeError()
+            raise RuntimeError("ERROR: chunked doesn't specified.")
         t = threading.Thread(target=self.__read_chunked)
         t.start()
         t.join(self.chunk_read_timeout)
