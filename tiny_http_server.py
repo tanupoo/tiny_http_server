@@ -237,12 +237,18 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
 
     def do_POST(self):
-        self.pre_process()
-        self.read_content()
+            self.pre_process()
+        try:
+            self.read_content()
+        except Exception as e:
+            print(e)
 
     def do_PUT(self):
-        self.pre_process()
-        self.read_content()
+            self.pre_process()
+        try:
+            self.read_content()
+        except Exception as e:
+            print(e)
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
