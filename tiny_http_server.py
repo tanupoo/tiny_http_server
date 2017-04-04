@@ -268,7 +268,7 @@ class TinyHTTPServer():
         if opt:
             self.config[name] = type(opt)
         elif not self.config.has_key(name):
-            if default is None and required is True:
+            if default == None and required == True:
                 raise ValueError("ERROR: %s is required." % name)
             self.config[name] = default
         # then, config[name] will be used as it is.
