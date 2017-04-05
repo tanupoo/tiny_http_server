@@ -303,7 +303,7 @@ class TinyHTTPServer():
         #
         if (args.config_file):
             try:
-                self.config = json.loads(open(args.config_file).read())
+                self.config = json.load(open(args.config_file))
             except Exception as e:
                 print('ERROR: json.loads()', e)
                 exit(1)
