@@ -1,6 +1,6 @@
 {
     "debug_level" : 9,
-    "server_addr" : "",
+    "server_addr" : "127.0.0.1",
     "server_port" : "9999",
     "doc_root" : ".",
     "echo" : 1,

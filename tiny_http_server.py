@@ -312,7 +312,7 @@ class TinyHTTPServer():
         #
         self.set_opt('debug_level', type=int, default=0, opt=args.debug_level)
         self.set_opt('server_port', default='18886', opt=args.server_port)
-        self.set_opt('server_addr', default='127.0.0.1', opt=args.server_addr)
+        self.set_opt('server_addr', default='', opt=args.server_addr)
         self.set_opt('doc_root', default='.', opt=args.doc_root)
         self.set_opt('ch_root', type=int, default=0, opt=args.ch_root)
         #
