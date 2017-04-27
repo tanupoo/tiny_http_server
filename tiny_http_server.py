@@ -27,6 +27,12 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     server_version = 'TinyHTTPServer/' + __version__
 
+    __LOG_DEBUG = 1
+    __LOG_DEBUG2 = 2
+    __LOG_DEBUG3 = 3
+
+    re_list_ignore_files = []
+
     #
     # maximum content size to be handled.
     # a negative value means infinity.
@@ -42,6 +48,11 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
 
     def __init__(self, request, client_address, server, **kwargs):
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
+        # initialize the re_list_ignore_files
+        for i in self.server.config.get('ignore_files', []):
+            if self._is_debug(1):
+                print("DEBUG: %s is added into the list of files ignored" % i)
+            self.re_list_ignore_files.append(re.compile(i))
 
     def _is_debug(self, level):
         if self.server.config['debug_level'] >= level:
@@ -52,29 +63,54 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
     def set_server_version(self, name):
         self.server_version = name
 
+    # @return
+    #   None: ignore
+    #   True: success
+    #   False: error
     def file_provider(self):
         ''' file provider.
 
         @return False something error happened.
         @return True a file was provided.
         '''
+        #
+        # check whether the path should be ignored.
+        #
+        for i in self.re_list_ignore_files:
+            if i.match(self.path):
+                if self._is_debug(self.__LOG_DEBUG):
+                    print('DEBUG: ignore by config. [%s]' % self.path)
+                return True
+        #
+        # if the path is "/debug" then ...
+        # you can disable it by configuring "/debug" in ignore_files.
+        #
+        if self.path == '/debug':
+            contents = ['%s: %s' % (k,v) for k,v in self.headers.items()]
+            self.put_response(contents)
+            return True
         # simply checking self.path.
         # should check it more.
         re_2dot = re.compile('\.\.')
         if re_2dot.search(self.path):
-            self.send_error_msg(400, 'ERROR: ".." in the path is not allowed.')
+            print('ERROR: ".." in the path is not allowed.')
+            self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
             return False
         # check whether the file exists.
         path = self.server.config['doc_root'] + self.path
         try:
             mode = os.stat(path).st_mode
             if not S_ISREG(mode):
-                self.send_error_msg(400, 'ERROR: not a regular file, %s' %
-                                    self.path)
+                print('ERROR: not a regular file, %s' % self.path)
                 return False
-        except Exception as e:
-            self.send_error_msg(400, 'ERROR: internal error, %s' % e)
+        except OSError:
+            print('ERROR: no such file %s' % self.path)
+            self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
             return False
+        except Exception as e:
+            print('ERROR: internal error, %s' % e)
+            return False
+        #
         self.send_doc(path)
         return True
 
@@ -162,7 +198,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         #
         #self.send_once(''.join(msg_list), ctype=ctype)
         size = reduce(lambda a, b: a + len(b), msg_list, 0)
-        self.send_once(contents, size, ctype=ctype)
+        self.send_once(msg_list, size, ctype=ctype)
 
     def send_once(self, contents, size, ctype=None):
         ''' send a list of messages.
@@ -224,17 +260,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.pre_process()
-        try:
-            if self.file_provider():
-                return
-        except Exception:
-            #contents = '\n'.join(
-            #        ['%s: %s' % (k,v) for k,v in self.headers.items()])
-            if self.path == '/debug':
-                contents = ['%s: %s' % (k,v) for k,v in self.headers.items()]
-                self.put_response(contents)
-            else:
-                self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
+        self.file_provider()
 
     def do_POST(self):
         self.pre_process()
