@@ -11,6 +11,7 @@ import re
 import os
 from stat import S_ISREG
 import mimetypes
+import logging
 
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 from SocketServer import ThreadingMixIn
@@ -20,16 +21,15 @@ import threading
 # XXX don't publish the path in this server, use self.path instead.
 #
 
+DEBUG2 = 4
+DEBUG3 = 7
+
 class TinyHTTPHandler(BaseHTTPRequestHandler):
 
     __version__ = '0.1'
 
     protocol_version = 'HTTP/1.1'
     server_version = 'TinyHTTPServer/' + __version__
-
-    __LOG_DEBUG = 1
-    __LOG_DEBUG2 = 2
-    __LOG_DEBUG3 = 3
 
     re_list_ignore_files = []
 
@@ -47,18 +47,12 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
     max_content_size = -1
 
     def __init__(self, request, client_address, server, **kwargs):
+        self.logger = server.config['logger']
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
         # initialize the re_list_ignore_files
         for i in self.server.config.get('ignore_files', []):
-            if self._is_debug(1):
-                print("DEBUG: %s is added into the list of files ignored" % i)
+            self.logger.debug("%s is added into the list of files ignored" % i)
             self.re_list_ignore_files.append(re.compile(i))
-
-    def _is_debug(self, level):
-        if self.server.config['debug_level'] >= level:
-            return True
-        else:
-            return False
 
     def set_server_version(self, name):
         self.server_version = name
@@ -78,8 +72,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         #
         for i in self.re_list_ignore_files:
             if i.match(self.path):
-                if self._is_debug(self.__LOG_DEBUG):
-                    print('DEBUG: ignore by config. [%s]' % self.path)
+                self.logger.debug('ignore by config. [%s]' % self.path)
                 return True
         #
         # if the path is "/debug" then ...
@@ -93,7 +86,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         # should check it more.
         re_2dot = re.compile('\.\.')
         if re_2dot.search(self.path):
-            print('ERROR: ".." in the path is not allowed.')
+            self.logger.error('".." in the path is not allowed.')
             self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
             return False
         # check whether the file exists.
@@ -101,14 +94,15 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         try:
             mode = os.stat(path).st_mode
             if not S_ISREG(mode):
-                print('ERROR: not a regular file, %s' % self.path)
+                self.logger.error('not a regular file, %s' % self.path)
+                self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
                 return False
         except OSError:
-            print('ERROR: no such file %s' % self.path)
+            self.logger.error('no such file %s' % self.path)
             self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
             return False
         except Exception as e:
-            print('ERROR: internal error, %s' % e)
+            self.logger.error('internal error, %s' % e)
             return False
         #
         self.send_doc(path)
@@ -120,16 +114,14 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         it may be overridden.
         access control should be here.
         '''
-        if self._is_debug(2):
-            print('DEBUG: thread#=', threading.currentThread().getName())
-            print('DEBUG: client =', self.client_address)
-            print('DEBUG: request=',
-                  self.command, self.path, self.request_version)
-            if self._is_debug(3):
-                print('---BEGIN OF REQUESTED HEADER---')
-                print('\n'.join(
-                        ['%s: %s' % (k,v) for k,v in self.headers.items()]))
-                print('---END OF REQUESTED HEADER---')
+        self.logger.debug('thread#=%s' % threading.currentThread().getName())
+        self.logger.debug('client=%s' % repr(self.client_address))
+        self.logger.debug('request=%s %s %s' %
+                (self.command, self.path, self.request_version))
+        self.logger.log(DEBUG3, '---BEGIN OF REQUESTED HEADER---')
+        self.logger.log(DEBUG3, "\n%s" % '\n'.join(
+                ['%s: %s' % (k,v) for k,v in self.headers.items()]))
+        self.logger.log(DEBUG3, '---END OF REQUESTED HEADER---')
 
     def read_content(self):
         ''' read message
@@ -166,10 +158,9 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         may be overriddedn.
         it is allowed that contents is a list or a string.
         '''
-        if self._is_debug(3):
-            print('---BEGIN OF REQUESTED DATA---')
-            print(contents)
-            print('---END OF REQUESTED DATA---')
+        self.logger.log(DEBUG3, '---BEGIN OF REQUESTED DATA---')
+        self.logger.log(DEBUG3, "\n%s" % contents)
+        self.logger.log(DEBUG3, '---END OF REQUESTED DATA---')
         #
         # Here, you can change your own code according to the data posted.
         #
@@ -219,17 +210,22 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_error_msg(404, 'ERROR: internal error, %s' % e)
             return
-        if self._is_debug(3):
-            print('---BEGIN OF RESPONSE---')
-            print('ctype=', ctype, 'size=', size)
-            print('---END OF RESPONSE---')
+        self.logger.log(DEBUG3, '---BEGIN OF RESPONSE---')
+        self.logger.log(DEBUG3, 'ctype=%s size=%d' % (ctype, size))
+        self.logger.log(DEBUG3, '---END OF RESPONSE---')
 
     def send_error_msg(self, code, content):
-        self.log_error(content)
+        #self.logger.error(content)
         self.send_error(code, content)
         self.send_header('Connection', 'close')
         self.end_headers()
         self.wfile.write(content)
+
+    def log_error(self, format, *args):
+        self.logger.error(format, *args)
+
+    def log_message(self, format, *args):
+        self.logger.info(format, *args)
 
     def send_doc(self, path, ctype=None):
         ''' send a file.
@@ -260,14 +256,15 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.pre_process()
-        self.file_provider()
+        if not self.file_provider():
+            self.close_connection = 1
 
     def do_POST(self):
         self.pre_process()
         try:
             self.read_content()
         except Exception as e:
-            print(e)
+            self.logger.error(e)
             self.send_error_msg(404, 'ERROR: internal error, %s' % e)
 
     def do_PUT(self):
@@ -275,7 +272,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         try:
             self.read_content()
         except Exception as e:
-            print(e)
+            self.logger.error(e)
             self.send_error_msg(404, 'ERROR: internal error, %s' % e)
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -288,9 +285,30 @@ class TinyHTTPServer():
 
     config = {}
     configured = False
+    logger = None
 
     def __init__(self, handler):
         self.handler = handler
+        self.__init_logger()
+
+    def __init_logger(self):
+        logging.addLevelName(DEBUG2, "DEBUG2")
+        logging.addLevelName(DEBUG3, "DEBUG3")
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(DEBUG3)
+
+    def __set_logger(self, filename, lvl):
+        fmt = logging.Formatter(fmt="%(asctime)s:%(name)s:%(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
+        if filename in ["stdout", "-"]:
+            ch = logging.StreamHandler()
+        elif filename == "stderr":
+            ch = logging.StreamHandler(stream=sys.stderr)
+        else:
+            ch = logging.handlers.WatchedFileHandler(filename, "a", "utf-8")
+        ch.setFormatter(fmt)
+        ch.setLevel(lvl)
+        self.logger.addHandler(ch)
+        self.config['logger'] = self.logger
 
     def set_opt(self, name, type=str, default=None, opt=None, required=True):
         if opt:
@@ -302,7 +320,7 @@ class TinyHTTPServer():
         # then, config[name] will be used as it is.
         self.config[name] = type(self.config[name])
 
-    def set_config(self):
+    def __set_config(self):
         # do nothing if it is called before.
         if self.configured:
             return
@@ -319,13 +337,25 @@ class TinyHTTPServer():
                     help='specifies the directory name of the document root.')
         p.add_argument('-C', action='store', dest='ch_root', default=0,
                     help='changes the root directory into the document root.')
+        p.add_argument('-l', action='store', dest='log_file', default="stdout",
+                    help='specifies the log file. stdout, stderr are valid.')
         p.add_argument('-d', action='append_const', dest='_f_debug',
                        default=[], const=1, help="increase debug mode.")
         p.add_argument('--debug', action='store', dest='_debug_level',
                        default=0, help="specify a debug level.")
         #
         args = p.parse_args()
+        # adjust the debug level.
+        #   0: logging.INFO
+        #   1: logging.DEBUG
+        #   2: DEBUG2
+        #   3: DEBUG3
         args.debug_level = len(args._f_debug) + int(args._debug_level)
+        loglvl_table = [ logging.INFO, logging.DEBUG, DEBUG2, DEBUG3 ]
+        if len(loglvl_table) < args.debug_level:
+            args.debug_level = DEBUG3
+        else:
+            args.debug_level = loglvl_table[args.debug_level]
         #
         if (args.config_file):
             try:
@@ -336,17 +366,20 @@ class TinyHTTPServer():
         #
         # overwrite config with the arguments.
         #
-        self.set_opt('debug_level', type=int, default=0, opt=args.debug_level)
         self.set_opt('server_port', default='18886', opt=args.server_port)
         self.set_opt('server_addr', default='', opt=args.server_addr)
         self.set_opt('doc_root', default='.', opt=args.doc_root)
         self.set_opt('ch_root', type=int, default=0, opt=args.ch_root)
+        self.set_opt('log_file', default="stdout", opt=args.log_file)
+        self.set_opt('debug_level', type=int, default=0, opt=args.debug_level)
         #
         #
         self.configured = True
 
     def run(self):
-        self.set_config()
+        self.__set_config()
+        self.__set_logger(self.config['log_file'], self.config['debug_level'])
+
         # change root.
         # XXX needs to disable GET method.
         if self.config['ch_root']:
@@ -363,12 +396,13 @@ class TinyHTTPServer():
                                        config=self.config)
             # XXX make it a daemon
             sa = httpd.socket.getsockname()
-            print('INFO: Starting HTTP server on', sa[0], 'port', sa[1])
+            self.logger.info('Starting HTTP server on %s port %s' % (sa[0],
+                                                                     sa[1]))
             httpd.serve_forever()
         except KeyboardInterrupt as e:
-            print('\nterminated by keyboard interrupted.')
+            self.logger.info('\nterminated by keyboard interrupted.')
         except Exception as e:
-            print('ERROR:', e)
+            self.logger.error(e)
         finally:
             httpd.socket.close()
 
@@ -377,5 +411,4 @@ main
 '''
 if __name__ == '__main__' :
     httpd = TinyHTTPServer(TinyHTTPHandler)
-    httpd.set_config()
     httpd.run()
