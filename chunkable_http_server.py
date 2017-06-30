@@ -71,13 +71,12 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
             if transfer_encoding == 'chunked':
                 self.read_chunked()
             else:
-                print('ERROR: not supported such transfer_encoding',
+                self.logger.error('not supported such transfer_encoding %s' %
                       transfer_encoding)
         elif self.headers.has_key('Content-Length'):
             self.post_read(self.read_length())
         else:
-            if self._is_debug(1):
-                print('DEBUG: Content-Length or Transfer-Encoding are not specified.')
+            self.logger.debug('Content-Length or Transfer-Encoding are not specified.')
             self.post_read(self.read_somehow())
 
     def read_chunked(self):
@@ -88,7 +87,7 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
         t.start()
         t.join(self.chunk_read_timeout)
         if t.is_alive() == True:
-            print('WARNING: timed out of thread of reading chunks.')
+            self.logger.warn('timed out of thread of reading chunks.')
 
     def __read_chunked(self):
         total_length = 0
@@ -101,12 +100,10 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
                 # chunk_header_length bytes is enough to read the chunk header.
                 #
                 chunk_header = self.rfile.readline(self.chunk_header_length)
-                if self._is_debug(3):
-                    print('DEBUG: chunk header=', chunk_header)
+                self.logger.log(DEBUG2, 'chunk header=%s' % chunk_header)
                 if chunk_header == '\r\n':
-                    if self._is_debug(4):
-                        print('DEBUG: last-chunk does not exist.')
-                        print('DEBUG: stop reading chunks anyway.')
+                    self.logger.log(DEBUG3, 'last-chunk does not exist.')
+                    self.logger.log(DEBUG3, 'stop reading chunks anyway.')
                     chunk_size = 0
                     break
                 if not chunk_header:
@@ -116,24 +113,22 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
             except:
                 raise
             if chunk_size == 0:
-                if self._is_debug(3):
-                    print('DEBUG: last-chunk has been found.')
+                self.logger.log(DEBUG3, 'last-chunk has been found.')
                 break
             #
             # read a chunk
             #   don't use readline() because CR or LF may be among the chunk.
             #
             chunk = self.rfile.read(chunk_size)
-            if self._is_debug(3):
-                print('DEBUG: chunked size=', chunk_size)
-                print('DEBUG: chunk=', chunk)
-                if self._is_debug(4):
-                    print('DEBUG: chunk(hex)=',
-                          [hex(x) for x in bytearray(chunk)])
+            self.logger.log(DEBUG2, 'chunked size=%d' % chunk_size)
+            self.logger.log(DEBUG2, 'chunk=%s' % chunk)
+            self.logger.log(DEBUG3, 'chunk(hex)=%s' %
+                    ' '.join([hex(x) for x in bytearray(chunk)]))
             # remove the tail.
             nl = self.rfile.read(2)
-            if self._is_debug(4):
-                print('DEBUG: tail of chunk=', [hex(x) for x in bytearray(nl)])
+            self.logger.log(DEBUG3,
+                            'tail of chunk=%s' % ' '.join([hex(x) for x in
+                                                          bytearray(nl)]))
             #
             contents.append(chunk)
             total_length += chunk_size
@@ -145,11 +140,9 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
         while True:
             try:
                 footer = self.rfile.readline(self.chunk_header_length)
-                if self._is_debug(3):
-                    print('DEBUG: footer=', footer)
+                self.logger.log(DEBUG2, 'footer=%s' % footer)
                 if footer == '\r\n':
-                    if self._is_debug(4):
-                        print('DEBUG: end of chunk has been found.')
+                    self.logger.log(DEBUG3, 'end of chunk has been found.')
                     break
                 elif not footer:
                     raise RuntimeError('Connection reset by peer')
@@ -170,8 +163,7 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
         self.send_header('Connection', 'close')
         self.send_header('Transfer-Encoding', 'chunked')
         self.end_headers()
-        if self._is_debug(3):
-            print('---BEGIN OF RESPONSE---')
+        self.logger.log(DEBUG2, '---BEGIN OF RESPONSE---')
         for c in msg_list:
             s = self.chunk_max_size
             bl = len(c) / s + (1 if len(c) % s else 0)
@@ -179,14 +171,12 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
             for i in c_frag:
                 chunk_size = hex(len(i))[2:]
                 self.wfile.write(''.join([ chunk_size, '\r\n', i, '\r\n' ]))
-                if self._is_debug(3):
-                    print(chunk_size)
-                    print(i.strip(), '\n')
-                    if self._is_debug(4):
-                        print('hex=', [ hex(x)[2:] for x in bytearray(i) ],
-                              '\n')
-        if self._is_debug(3):
-            print('---END OF RESPONSE---')
+                self.logger.log(DEBUG2, chunk_size)
+                self.logger.log(DEBUG2, "%s" % i.strip())
+                self.logger.log(DEBUG3, 'hex=%s' % " ".join([ hex(x)[2:] for x
+                                                             in bytearray(i) ],
+                                                            '\n'))
+        self.logger.log(DEBUG2, '---END OF RESPONSE---')
         self.wfile.write('0\r\n')
         self.wfile.write('\r\n')
         # 
