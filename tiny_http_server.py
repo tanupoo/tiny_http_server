@@ -352,10 +352,11 @@ class TinyHTTPServer():
         #   3: DEBUG3
         args.debug_level = len(args._f_debug) + int(args._debug_level)
         loglvl_table = [ logging.INFO, logging.DEBUG, DEBUG2, DEBUG3 ]
-        if len(loglvl_table) < args.debug_level:
-            args.debug_level = DEBUG3
-        else:
+        print('xxx %d : %d' % (len(loglvl_table), args.debug_level))
+        if len(loglvl_table) > args.debug_level:
             args.debug_level = loglvl_table[args.debug_level]
+        else:
+            args.debug_level = DEBUG3
         #
         if (args.config_file):
             try:
