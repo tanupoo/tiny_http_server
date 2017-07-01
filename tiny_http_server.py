@@ -320,7 +320,7 @@ class TinyHTTPServer():
         # then, config[name] will be used as it is.
         self.config[name] = type(self.config[name])
 
-    def __set_config(self):
+    def set_config(self):
         # do nothing if it is called before.
         if self.configured:
             return
@@ -377,7 +377,7 @@ class TinyHTTPServer():
         self.configured = True
 
     def run(self):
-        self.__set_config()
+        self.set_config()
         self.__set_logger(self.config['log_file'], self.config['debug_level'])
 
         # change root.
