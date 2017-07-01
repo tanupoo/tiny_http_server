@@ -22,8 +22,9 @@ import threading
 # XXX don't publish the path in this server, use self.path instead.
 #
 
-DEBUG2 = 4
-DEBUG3 = 7
+DEBUG2 = 7
+DEBUG3 = 4
+DEBUG4 = 0
 
 class TinyHTTPHandler(BaseHTTPRequestHandler):
 
@@ -347,7 +348,7 @@ class TinyHTTPServer():
         p.add_argument('-d', action='append_const', dest='_f_debug',
                        default=[], const=1, help="increase debug mode.")
         p.add_argument('--debug', action='store', dest='_debug_level',
-                       default=0, help="specify a debug level.")
+                       type=int, default=-1, help="specify a debug level.")
         #
         args = p.parse_args()
         # adjust the debug level.
@@ -355,12 +356,12 @@ class TinyHTTPServer():
         #   1: logging.DEBUG
         #   2: DEBUG2
         #   3: DEBUG3
-        args.debug_level = len(args._f_debug) + int(args._debug_level)
-        loglvl_table = [ logging.INFO, logging.DEBUG, DEBUG2, DEBUG3 ]
-        if len(loglvl_table) > args.debug_level:
-            args.debug_level = loglvl_table[args.debug_level]
-        else:
-            args.debug_level = DEBUG3
+        if len(args._f_debug) and args._debug_level != -1:
+            print("ERROR: use either -d or --debug option.")
+            exit(1)
+        if args._debug_level == -1:
+            args._debug_level = 0
+        args.debug_level = len(args._f_debug) + args._debug_level
         #
         if (args.config_file):
             try:
@@ -377,6 +378,18 @@ class TinyHTTPServer():
         self.set_opt('ch_root', type=int, default=0, opt=args.ch_root)
         self.set_opt('log_file', default="stdout", opt=args.log_file)
         self.set_opt('debug_level', type=int, default=0, opt=args.debug_level)
+        #
+        # fixed the log level for the logging module.
+        #
+        loglvl_table = [ logging.INFO, logging.DEBUG, DEBUG2, DEBUG3, DEBUG4 ]
+        print("xxx", loglvl_table)
+        if len(loglvl_table) > self.config['debug_level']:
+            args.debug_level = loglvl_table[self.config['debug_level']]
+        else:
+            args.debug_level = DEBUG4
+        #
+        if args.debug_level <= logging.DEBUG:
+            print("DEBUG: log level = %d" % args.debug_level)
         #
         #
         self.configured = True
