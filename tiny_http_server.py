@@ -12,6 +12,7 @@ import os
 from stat import S_ISREG
 import mimetypes
 import logging
+import logging.handlers
 
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 from SocketServer import ThreadingMixIn
