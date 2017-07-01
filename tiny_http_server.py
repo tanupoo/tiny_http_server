@@ -287,14 +287,18 @@ class TinyHTTPServer():
     configured = False
     logger = None
 
-    def __init__(self, handler):
+    '''
+    appname: is used in the logger.
+    '''
+    def __init__(self, handler, appname="TinyHTTPServer"):
         self.handler = handler
+        self.appname = appname
         self.__init_logger()
 
     def __init_logger(self):
         logging.addLevelName(DEBUG2, "DEBUG2")
         logging.addLevelName(DEBUG3, "DEBUG3")
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(self.appname)
         self.logger.setLevel(DEBUG3)
 
     def __set_logger(self, filename, lvl):
