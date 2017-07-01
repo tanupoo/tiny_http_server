@@ -382,7 +382,6 @@ class TinyHTTPServer():
         # fixed the log level for the logging module.
         #
         loglvl_table = [ logging.INFO, logging.DEBUG, DEBUG2, DEBUG3, DEBUG4 ]
-        print("xxx", loglvl_table)
         if len(loglvl_table) > self.config['debug_level']:
             args.debug_level = loglvl_table[self.config['debug_level']]
         else:
