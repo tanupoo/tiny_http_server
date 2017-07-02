@@ -24,7 +24,7 @@ import threading
 
 DEBUG2 = 7
 DEBUG3 = 4
-DEBUG4 = 0
+DEBUG4 = 1
 
 class TinyHTTPHandler(BaseHTTPRequestHandler):
 
@@ -300,8 +300,9 @@ class TinyHTTPServer():
     def __init_logger(self):
         logging.addLevelName(DEBUG2, "DEBUG2")
         logging.addLevelName(DEBUG3, "DEBUG3")
+        logging.addLevelName(DEBUG4, "DEBUG4")
         self.logger = logging.getLogger(self.appname)
-        self.logger.setLevel(DEBUG3)
+        self.logger.setLevel(DEBUG4)
 
     def __set_logger(self, filename, lvl):
         fmt = logging.Formatter(fmt="%(asctime)s:%(name)s:%(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
@@ -379,16 +380,16 @@ class TinyHTTPServer():
         self.set_opt('log_file', default="stdout", opt=args.log_file)
         self.set_opt('debug_level', type=int, default=0, opt=args.debug_level)
         #
-        # fixed the log level for the logging module.
+        # fixed self.config['debug_level'] for the logging module.
         #
         loglvl_table = [ logging.INFO, logging.DEBUG, DEBUG2, DEBUG3, DEBUG4 ]
         if len(loglvl_table) > self.config['debug_level']:
-            args.debug_level = loglvl_table[self.config['debug_level']]
+            self.config['debug_level'] = loglvl_table[self.config['debug_level']]
         else:
-            args.debug_level = DEBUG4
+            self.config['debug_level'] = DEBUG4
         #
-        if args.debug_level <= logging.DEBUG:
-            print("DEBUG: log level = %d" % args.debug_level)
+        if self.config['debug_level'] <= logging.DEBUG:
+            print("DEBUG: log level = %d" % self.config['debug_level'])
         #
         #
         self.configured = True
