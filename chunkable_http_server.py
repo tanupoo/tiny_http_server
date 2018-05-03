@@ -44,17 +44,17 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
     chunk_read_timeout = 5
 
     def __init__(self, request, client_address, server, **kwargs):
-        if kwargs.has_key('force_chunked'):
+        if "force_chunked" in kwargs:
             if kwargs['force_chunked'] in [ True, False ]:
                 self.force_chunked = kwargs['force_chunked']
             else:
                 raise ValueError('invalid value of force_chunked')
-        if kwargs.has_key('chunk_max_size'):
+        if "chunk_max_size" in kwargs:
             if kwargs['chunk_max_size'] > 0:
                 self.chunk_max_size = kwargs['chunk_max_size']
             else:
                 raise ValueError('invalid value of chunk_max_size')
-        if kwargs.has_key('chunk_read_timeout'):
+        if "chunk_read_timeout" in kwargs:
             if kwargs['chunk_read_timeout'] > 0:
                 self.chunk_read_timeout = kwargs['chunk_read_timeout']
             else:
@@ -73,7 +73,7 @@ class ChunkableHTTPRequestHandler(TinyHTTPHandler):
             else:
                 self.logger.error('not supported such transfer_encoding %s' %
                       transfer_encoding)
-        elif self.headers.has_key('Content-Length'):
+        elif "Content-Length" in self.headers:
             self.post_read(self.read_length())
         else:
             self.logger.debug('Content-Length or Transfer-Encoding are not specified.')
