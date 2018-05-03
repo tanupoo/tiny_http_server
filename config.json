@@ -5,6 +5,6 @@
     "doc_root" : ".",
     "echo" : 1,
     "key" : { "hoge" : [ "1", "2" ] },
-    "ignore_files" : [ "/favicon.ico" ]
+    "exclude_files" : [ "/favicon.ico" ]
 }
 

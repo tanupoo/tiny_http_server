@@ -14,9 +14,18 @@ import mimetypes
 import logging
 import logging.handlers
 
-from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
-from SocketServer import ThreadingMixIn
+try:
+    from http.server import HTTPServer
+    from http.server import BaseHTTPRequestHandler
+    from socketserver import ThreadingMixIn
+except:
+    from BaseHTTPServer import HTTPServer
+    from BaseHTTPServer import BaseHTTPRequestHandler
+    from SocketServer import ThreadingMixIn
+
 import threading
+from logging_ssl_socket import logging_ssl_socket
+from ssl import PROTOCOL_TLSv1
 
 #
 # XXX don't publish the path in this server, use self.path instead.
@@ -28,12 +37,12 @@ DEBUG4 = 1
 
 class TinyHTTPHandler(BaseHTTPRequestHandler):
 
-    __version__ = '0.1'
+    __version__ = '0.2'
 
     protocol_version = 'HTTP/1.1'
     server_version = 'TinyHTTPServer/' + __version__
 
-    re_list_ignore_files = []
+    re_list_exclude_files = []
 
     #
     # maximum content size to be handled.
@@ -50,11 +59,8 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
 
     def __init__(self, request, client_address, server, **kwargs):
         self.logger = server.config['logger']
+        self.re_list_exclude_files = server.config['re_exclude_files']
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
-        # initialize the re_list_ignore_files
-        for i in self.server.config.get('ignore_files', []):
-            self.logger.debug("%s is added into the list of files ignored" % i)
-            self.re_list_ignore_files.append(re.compile(i))
 
     def set_server_version(self, name):
         self.server_version = name
@@ -70,15 +76,15 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         @return True a file was provided.
         '''
         #
-        # check whether the path should be ignored.
+        # check whether the path should be excluded.
         #
-        for i in self.re_list_ignore_files:
+        for i in self.re_list_exclude_files:
             if i.match(self.path):
-                self.logger.debug('ignore by config. [%s]' % self.path)
+                self.logger.debug('exclude by config. [%s]' % self.path)
                 return True
         #
         # if the path is "/debug" then ...
-        # you can disable it by configuring "/debug" in ignore_files.
+        # you can disable it by configuring "/debug" in exclude_files.
         #
         if self.path == '/debug':
             contents = ['%s: %s' % (k,v) for k,v in self.headers.items()]
@@ -129,14 +135,14 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         ''' read message
         
         may be overridden. '''
-        if self.headers.has_key('Content-Length'):
+        if "Content-Length" in self.headers:
             self.post_read(self.read_length())
         else:
             self.post_read('')
 
     def read_length(self):
         ''' read message by the content-length. '''
-        if not self.headers.has_key('Content-Length'):
+        if "Content-Length" not in self.headers:
             self.send_error_msg(400, 'ERROR: Content-Length must be specified')
             return None
         size = int(self.headers['Content-Length'])
@@ -186,11 +192,17 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         msg_list.append('\n')
         msg_list.extend(['%s: %s\n' % (k,v) for k,v in self.headers.items()])
         msg_list.append('\n\n')
-        if contents:
+        if isinstance(contents, list):
             msg_list.extend(contents)
+        elif isinstance(contents, bytes):
+            msg_list.append(contents.decode(encoding="utf-8"))
+        else:
+            msg_list.extend(append)
         #
         #self.send_once(''.join(msg_list), ctype=ctype)
-        size = reduce(lambda a, b: a + len(b), msg_list, 0)
+        size = 0
+        for i in msg_list:
+            size += len(i)
         self.send_once(msg_list, size, ctype=ctype)
 
     def send_once(self, contents, size, ctype=None):
@@ -208,7 +220,10 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
         try:
             for i in contents:
-                self.wfile.write(i)
+                if isinstance(i, str):
+                    self.wfile.write(bytes(i, encoding="utf-8"))
+                else:
+                    self.wfile.write(i)
         except Exception as e:
             self.send_error_msg(404, 'ERROR: internal error, %s' % e)
             return
@@ -221,7 +236,10 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         self.send_error(code, content)
         self.send_header('Connection', 'close')
         self.end_headers()
-        self.wfile.write(content)
+        if isinstance(content, str):
+            self.wfile.write(bytes(content, encoding="utf-8"))
+        else:
+            self.wfile.write(content)
 
     def log_error(self, format, *args):
         self.logger.error(format, *args)
@@ -318,12 +336,22 @@ class TinyHTTPServer():
         self.config['logger'] = self.logger
 
     def set_opt(self, name, type=str, default=None, opt=None, required=True):
-        if opt:
+        '''
+        name: attribute name.
+        default: applied it if the name is not defined
+                 in either config nor arguments.
+        opt: overwrite the attribute with it.
+        type: int or str
+        '''
+        if opt is not None:
             self.config[name] = type(opt)
-        elif not self.config.has_key(name):
+        elif name not in self.config:
             if default == None and required == True:
                 raise ValueError("ERROR: %s is required." % name)
             self.config[name] = default
+        else:
+            # use self.config[name]
+            pass
         # then, config[name] will be used as it is.
         self.config[name] = type(self.config[name])
 
@@ -333,12 +361,11 @@ class TinyHTTPServer():
             return
         #
         p = argparse.ArgumentParser()
-        p.add_argument('-s', action='store', dest='server_addr', default=None,
+        p.add_argument('-s', action='store', dest='server_addr',
                        help='specifies the address of the server')
         p.add_argument('-p', action='store', dest='server_port',
-                       default=None,
                        help='specifies the port number of the server')
-        p.add_argument('-c', action='store', dest='config_file', default=None,
+        p.add_argument('-c', action='store', dest='config_file',
                        help='specifies the name of the configuration file')
         p.add_argument('-D', action='store', dest='doc_root', default=None,
                     help='specifies the directory name of the document root.')
@@ -346,6 +373,11 @@ class TinyHTTPServer():
                     help='changes the root directory into the document root.')
         p.add_argument('-l', action='store', dest='log_file', default="stdout",
                     help='specifies the log file. stdout, stderr are valid.')
+        p.add_argument('-k', action='store', dest='cert_file',
+                       default=None, help="""enable secure server and specify a
+                       filename including a certificate and private-key.""")
+        p.add_argument('--ssl-version', action='store', dest='ssl_ver',
+                       default=None, help="specify the SSL version.")
         p.add_argument('-d', action='append_const', dest='_f_debug',
                        default=[], const=1, help="increase debug mode.")
         p.add_argument('--debug', action='store', dest='_debug_level',
@@ -363,6 +395,8 @@ class TinyHTTPServer():
         if args._debug_level == -1:
             args._debug_level = 0
         args.debug_level = len(args._f_debug) + args._debug_level
+        ## XXX
+        #self.config["debug_level"] = 4
         #
         if (args.config_file):
             try:
@@ -371,14 +405,17 @@ class TinyHTTPServer():
                 print('ERROR: json.loads()', e)
                 exit(1)
         #
-        # overwrite config with the arguments.
+        # overwrite attributes in the config with the arguments.
         #
         self.set_opt('server_port', default='18886', opt=args.server_port)
         self.set_opt('server_addr', default='', opt=args.server_addr)
         self.set_opt('doc_root', default='.', opt=args.doc_root)
         self.set_opt('ch_root', type=int, default=0, opt=args.ch_root)
         self.set_opt('log_file', default="stdout", opt=args.log_file)
-        self.set_opt('debug_level', type=int, default=0, opt=args.debug_level)
+        self.set_opt('cert_file', default=None, opt=args.cert_file,
+                     required=False)
+        self.set_opt('ssl_ver', type=int, default=PROTOCOL_TLSv1,
+                     opt=args.ssl_ver)
         #
         # fixed self.config['debug_level'] for the logging module.
         #
@@ -390,6 +427,16 @@ class TinyHTTPServer():
         #
         if self.config['debug_level'] <= logging.DEBUG:
             print("DEBUG: log level = %d" % self.config['debug_level'])
+        #
+        # initialize the re_list_exclude_files
+        #
+        if self.config['debug_level'] <= logging.DEBUG:
+            print("DEBUG: initializing the list of file excluded.")
+        self.config["re_exclude_files"] = []
+        for i in self.config.get("exclude_files", []):
+            if self.config['debug_level'] <= logging.DEBUG:
+                print("DEBUG:  {} is added".format(i))
+            self.config["re_exclude_files"].append(re.compile(i))
         #
         #
         self.configured = True
@@ -412,10 +459,17 @@ class TinyHTTPServer():
                                        int(self.config['server_port'])),
                                        self.handler,
                                        config=self.config)
+            if self.config["cert_file"]:
+                httpd.socket = logging_ssl_socket(httpd.socket,
+                                           server_side=True,
+                                           certfile=self.config["cert_file"],
+                                           ssl_version=self.config["ssl_ver"],
+                                           logger=self.logger)
             # XXX make it a daemon
             sa = httpd.socket.getsockname()
-            self.logger.info('Starting HTTP server on %s port %s' % (sa[0],
-                                                                     sa[1]))
+            self.logger.info("Starting HTTP{} server on {} port {}".format(
+                             "S" if self.config["cert_file"] else "",
+                             sa[0], sa[1]))
             httpd.serve_forever()
         except KeyboardInterrupt as e:
             self.logger.info('\nterminated by keyboard interrupted.')
