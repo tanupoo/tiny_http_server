@@ -18,13 +18,14 @@ try:
     from http.server import HTTPServer
     from http.server import BaseHTTPRequestHandler
     from socketserver import ThreadingMixIn
+    from .logging_ssl_socket import logging_ssl_socket
 except:
     from BaseHTTPServer import HTTPServer
     from BaseHTTPServer import BaseHTTPRequestHandler
     from SocketServer import ThreadingMixIn
+    from logging_ssl_socket import logging_ssl_socket
 
 import threading
-from logging_ssl_socket import logging_ssl_socket
 from ssl import PROTOCOL_TLSv1
 
 #

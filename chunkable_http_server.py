@@ -7,7 +7,10 @@
 
 from __future__ import print_function
 
-from tiny_http_server import *
+try:
+    from .tiny_http_server import TinyHTTPHandler, ThreadedHTTPServer, TinyHTTPServer, DEBUG2, DEBUG3
+except:
+    from tiny_http_server import TinyHTTPHandler, ThreadedHTTPServer, TinyHTTPServer, DEBUG2, DEBUG3
 
 '''
 - Chunk handling referred to "4.1.  Chunked Transfer Coding in RFC 7230".
