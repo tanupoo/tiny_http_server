@@ -18,11 +18,14 @@ try:
     from http.server import HTTPServer
     from http.server import BaseHTTPRequestHandler
     from socketserver import ThreadingMixIn
-    from .logging_ssl_socket import logging_ssl_socket
 except:
     from BaseHTTPServer import HTTPServer
     from BaseHTTPServer import BaseHTTPRequestHandler
     from SocketServer import ThreadingMixIn
+
+try:
+    from .logging_ssl_socket import logging_ssl_socket
+except:
     from logging_ssl_socket import logging_ssl_socket
 
 import threading
@@ -413,7 +416,7 @@ class TinyHTTPServer():
         self.set_opt('doc_root', default='.', opt=args.doc_root)
         self.set_opt('ch_root', type=int, default=0, opt=args.ch_root)
         self.set_opt('log_file', default="stdout", opt=args.log_file)
-        self.set_opt('cert_file', default=None, opt=args.cert_file,
+        self.set_opt('cert_file', default="", opt=args.cert_file,
                      required=False)
         self.set_opt('ssl_ver', type=int, default=PROTOCOL_TLSv1,
                      opt=args.ssl_ver)
@@ -421,7 +424,7 @@ class TinyHTTPServer():
         # fixed self.config['debug_level'] for the logging module.
         #
         loglvl_table = [ logging.INFO, logging.DEBUG, DEBUG2, DEBUG3, DEBUG4 ]
-        if len(loglvl_table) > self.config['debug_level']:
+        if self.config.get('debug_level') and len(loglvl_table) > self.config['debug_level']:
             self.config['debug_level'] = loglvl_table[self.config['debug_level']]
         else:
             self.config['debug_level'] = DEBUG4
