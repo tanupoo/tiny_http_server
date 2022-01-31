@@ -62,6 +62,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
     max_content_size = -1
 
     def __init__(self, request, client_address, server, **kwargs):
+        self.server = server
         self.logger = server.config['logger']
         self.re_list_exclude_files = server.config['re_exclude_files']
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
@@ -219,6 +220,8 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         if ctype:
             self.send_header('Content-Type', ctype)
+        if self.server.config["allow_origin"]:
+            self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Connection', 'close')
         self.send_header('Content-Length', size)
         self.end_headers()
@@ -266,7 +269,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
                         'ERROR: too large file size to be sent. > %d' %
                         self.max_content_size)
                 return
-            f = open(path)
+            f = open(path, "rb")
         except Exception as e:
             self.send_error_msg(404, 'ERROR: internal error, %s' % e)
             return
@@ -298,6 +301,9 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.logger.error(e)
             self.send_error_msg(404, 'ERROR: internal error, %s' % e)
+
+    def do_OPTIONS(self):
+        self.pre_process()
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
@@ -380,6 +386,8 @@ class TinyHTTPServer():
         p.add_argument('-k', action='store', dest='cert_file',
                        default=None, help="""enable secure server and specify a
                        filename including a certificate and private-key.""")
+        p.add_argument('-A', action='store_true', dest='allow_origin',
+                    help='enable to send cors header to allow any.')
         p.add_argument('--ssl-version', action='store', dest='ssl_ver',
                        default=None, help="specify the SSL version.")
         p.add_argument('-d', action='append_const', dest='_f_debug',
@@ -416,6 +424,7 @@ class TinyHTTPServer():
         self.set_opt('doc_root', default='.', opt=args.doc_root)
         self.set_opt('ch_root', type=int, default=0, opt=args.ch_root)
         self.set_opt('log_file', default="stdout", opt=args.log_file)
+        self.set_opt('allow_origin', default=False, opt=args.allow_origin)
         self.set_opt('cert_file', default="", opt=args.cert_file,
                      required=False)
         self.set_opt('ssl_ver', type=int, default=PROTOCOL_TLSv1,
