@@ -9,7 +9,8 @@ import traceback
 import json
 import re
 import os
-from stat import S_ISREG
+from stat import S_ISREG, S_ISDIR
+from datetime import datetime
 import mimetypes
 import logging
 import logging.handlers
@@ -30,6 +31,46 @@ except:
 
 import threading
 from ssl import PROTOCOL_TLSv1
+
+#
+#
+#
+def make_html_dir(os_path, http_path):
+    def get_file_stat(os_path):
+        stat = os.stat(os_path)
+        mode = os.stat(os_path).st_mode
+        return {
+                "dir": True if S_ISDIR(mode) else False,
+                "name": os.path.split(os_path)[1],
+                "path": os.path.join(http_path, os.path.split(os_path)[1]),
+                "size": stat.st_size,
+                "time": datetime.fromtimestamp(stat.st_atime).isoformat()
+                }
+    file_stats = []
+    with os.scandir(os_path) as fd:
+        for entry in fd:
+            if entry.name.startswith(".."):
+                continue
+            file_stats.append(get_file_stat(entry.path))
+    if len(file_stats) > 0:
+        html = ['<!DOCTYPE html><html lang="ja">']
+        html.append('''<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>dir: {}</title>'''.format(http_path))
+        html.append("<body><table>")
+        for v in sorted(file_stats, reverse=True, key=lambda v: v["dir"]):
+            tds = '<td><a href="{}">{}{}</a></td>'.format(
+                    v['path'], v['name'], "/" if v["dir"] is True else "")
+            tds += '<td>{}</td>'.format(v["size"])
+            tds += '<td>{}</td>'.format(v["time"])
+            html.append("<tr>{}</tr>".format("".join(tds)))
+        html.append("</table></body></html>")
+        return "".join(html)
+    else:
+        ""
+
 
 #
 # XXX don't publish the path in this server, use self.path instead.
@@ -103,23 +144,35 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
             self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
             return False
         # check whether the file exists.
-        path = self.server.config['doc_root'] + self.path
+        os_path = self.server.config['doc_root'] + self.path
         try:
-            mode = os.stat(path).st_mode
-            if not S_ISREG(mode):
-                self.logger.error('not a regular file, %s' % self.path)
-                self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
-                return False
+            mode = os.stat(os_path).st_mode
         except OSError:
             self.logger.error('no such file %s' % self.path)
             self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
             return False
+        #
+        try:
+            if S_ISDIR(mode):
+                if self.server.config['show_folder']:
+                    contents = make_html_dir(os_path, self.path)
+                    self.put_response(contents)
+                    return True
+                else:
+                    self.logger.error("{} is a directory. but, "
+                                      "show_folder option is disabled.")
+                    self.send_error_msg(404, "ERROR: no such file %s" % self.path)
+                    return False
+            elif not S_ISREG(mode):
+                self.logger.error('not a regular file, %s' % self.path)
+                self.send_error_msg(404, 'ERROR: no such file %s' % self.path)
+                return False
+            else:
+                self.send_doc(os_path)
+                return True
         except Exception as e:
             self.logger.error('internal error, %s' % e)
             return False
-        #
-        self.send_doc(path)
-        return True
 
     def pre_process(self):
         ''' pre-processing to read the content
@@ -202,7 +255,7 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         elif isinstance(contents, bytes):
             msg_list.append(contents.decode(encoding="utf-8"))
         else:
-            msg_list.extend(append)
+            msg_list.extend([contents])
         #
         #self.send_once(''.join(msg_list), ctype=ctype)
         size = 0
@@ -381,6 +434,8 @@ class TinyHTTPServer():
                     help='specifies the directory name of the document root.')
         p.add_argument('-C', action='store', dest='ch_root', default=0,
                     help='changes the root directory into the document root.')
+        p.add_argument('-S', action='store_false', dest='show_folder',
+                    help='disables to show files in the path.')
         p.add_argument('-l', action='store', dest='log_file', default="stdout",
                     help='specifies the log file. stdout, stderr are valid.')
         p.add_argument('-k', action='store', dest='cert_file',
@@ -421,8 +476,9 @@ class TinyHTTPServer():
         #
         self.set_opt('server_port', default='18886', opt=args.server_port)
         self.set_opt('server_addr', default='', opt=args.server_addr)
-        self.set_opt('doc_root', default='.', opt=args.doc_root)
+        self.set_opt('doc_root', default=os.getcwd(), opt=args.doc_root)
         self.set_opt('ch_root', type=int, default=0, opt=args.ch_root)
+        self.set_opt('show_folder', type=bool, default=True, opt=args.show_folder)
         self.set_opt('log_file', default="stdout", opt=args.log_file)
         self.set_opt('allow_origin', default=False, opt=args.allow_origin)
         self.set_opt('cert_file', default="", opt=args.cert_file,
