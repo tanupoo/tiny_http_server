@@ -58,7 +58,8 @@ def make_html_dir(os_path, http_path):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="data:,">
-<title>dir: {}</title>'''.format(http_path))
+<title>dir: {}</title>
+</head>'''.format(http_path))
         html.append("<body><table>")
         for v in sorted(file_stats, reverse=True, key=lambda v: v["dir"]):
             tds = '<td><a href="{}">{}{}</a></td>'.format(
@@ -245,11 +246,12 @@ class TinyHTTPHandler(BaseHTTPRequestHandler):
         it is allowed that contents is a list or a string.
         '''
         msg_list = []
-        msg_list.append(' '.join(
-                [self.command, self.path, self.request_version]))
-        msg_list.append('\n')
-        msg_list.extend(['%s: %s\n' % (k,v) for k,v in self.headers.items()])
-        msg_list.append('\n\n')
+        if self.server.config["debug_level"] > 1:
+            msg_list.append(' '.join(
+                    [self.command, self.path, self.request_version]))
+            msg_list.append('\n')
+            msg_list.extend(['%s: %s\n' % (k,v) for k,v in self.headers.items()])
+            msg_list.append('\n\n')
         if isinstance(contents, list):
             msg_list.extend(contents)
         elif isinstance(contents, bytes):
@@ -465,6 +467,7 @@ class TinyHTTPServer():
         ## XXX
         #self.config["debug_level"] = 4
         #
+        print("debug_level is {}".format(args.debug_level))
         if (args.config_file):
             try:
                 self.config = json.load(open(args.config_file))
@@ -487,7 +490,7 @@ class TinyHTTPServer():
                      opt=args.ssl_ver)
         #
         # fixed self.config['debug_level'] for the logging module.
-        #
+        # XXX need to fix.
         loglvl_table = [ logging.INFO, logging.DEBUG, DEBUG2, DEBUG3, DEBUG4 ]
         if self.config.get('debug_level') and len(loglvl_table) > self.config['debug_level']:
             self.config['debug_level'] = loglvl_table[self.config['debug_level']]
